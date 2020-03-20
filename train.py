@@ -10,7 +10,7 @@ from core import datasets
 from core.utils.optim import Optim
 from core.utils.config import Config
 from core.utils.eval import EvalPSNR
-from core.ops.sync_bn import DataParallelwithSyncBN
+from core.ops.sync_bn_cupy.sync_bn_module import DataParallelwithSyncBN
 
 best_PSNR = 0
 
@@ -19,6 +19,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Train Voxel Flow')
     parser.add_argument('config', help='config file path')
     args = parser.parse_args()
+    
     return args
 
 
@@ -29,6 +30,7 @@ def main():
 
     os.environ["CUDA_VISIBLE_DEVICES"] = ','.join(
         str(gpu) for gpu in cfg.device)
+    # os.environ["CUDA_VISIBLE_DEVICES"] = '0'
     cudnn.benchmark = True
     cudnn.fastest = True
 
@@ -44,19 +46,19 @@ def main():
     cfg.test.input_std = model.input_std
 
     # Data loading code
-    train_loader = torch.utils.data.DataLoader(
-        ds(cfg.train),
-        batch_size=cfg.train.batch_size,
-        shuffle=True,
-        num_workers=32,
-        pin_memory=True,
-        drop_last=True)
+    # train_loader = torch.utils.data.DataLoader(
+    #     ds(cfg.train),
+    #     batch_size=cfg.train.batch_size,
+    #     shuffle=True,
+    #     num_workers=0, #32,
+    #     pin_memory=True,
+    #     drop_last=True)
 
     val_loader = torch.utils.data.DataLoader(
         datasets.UCF101(cfg.test, False),
         batch_size=cfg.test.batch_size,
         shuffle=False,
-        num_workers=32,
+        num_workers=0, #32,
         pin_memory=True)
 
     cfg.train.optimizer.args.max_iter = (
@@ -93,7 +95,7 @@ def main():
     for epoch in range(cfg.train.optimizer.args.max_epoch):
 
         # train for one epoch
-        train(train_loader, model, optimizer, criterion, epoch)
+        # train(train_loader, model, optimizer, criterion, epoch)
         # evaluate on validation set
         if ((epoch + 1) % cfg.logging.eval_freq == 0
                 or epoch == cfg.train.optimizer.args.max_epoch - 1):

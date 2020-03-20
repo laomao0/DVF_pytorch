@@ -1,7 +1,7 @@
 import torch
 from torch import nn
-from core.ops.sync_bn import convert_bn
-from core.ops.sync_bn import SyncBatchNorm2d as BatchNorm2d
+from core.ops.sync_bn_cupy.sync_bn_module import convert_bn
+from core.ops.sync_bn_cupy.sync_bn_module import SyncBatchNorm2d as BatchNorm2d
 
 
 def meshgrid(height, width):

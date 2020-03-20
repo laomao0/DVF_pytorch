@@ -10,7 +10,7 @@ model = dict(
     mult_bn=[1, 1],  # lr, decay
 )
 
-device = [0, 1, 2, 3, 4, 5, 6, 7]
+device = [0]
 resume = ''
 weight = ''
 dataset = 'UCF101'
