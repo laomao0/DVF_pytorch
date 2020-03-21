@@ -5,19 +5,28 @@ import argparse
 import shutil
 import numpy as np
 import torch.backends.cudnn as cudnn
+from core.utils import transforms as tf
 from core import models
 from core import datasets
 from core.utils.optim import Optim
 from core.utils.config import Config
 from core.utils.eval import EvalPSNR
 from core.ops.sync_bn_cupy.sync_bn_module import DataParallelwithSyncBN
+import logging
+from skimage.measure import compare_psnr as my_compare_psnr
+from skimage.measure import compare_ssim
+import cv2
+# import utils.util as util
+def my_compare_ssim(img1,img2):
+        ssim = compare_ssim(img1, img2, multichannel=True)
+        return ssim
 
 best_PSNR = 0
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train Voxel Flow')
-    parser.add_argument('config', help='config file path')
+    parser.add_argument('config', default='./configs/voxel-flow.py', help='config file path')
     args = parser.parse_args()
     return args
 
@@ -45,6 +54,9 @@ def main():
     cfg.test.input_mean = model.input_mean
     cfg.test.input_std = model.input_std
 
+    input_mean = cfg.test.input_mean
+    input_std = cfg.test.input_std
+
     # Data loading code
 
     val_loader = torch.utils.data.DataLoader(
@@ -69,7 +81,7 @@ def main():
     evaluator = EvalPSNR(255.0 / np.mean(cfg.test.input_std))
 
 
-    PSNR = validate(val_loader, model, criterion, evaluator)
+    PSNR = validate(val_loader, model, criterion, evaluator, input_mean, input_std)
 
     print(PSNR)
 
@@ -85,14 +97,21 @@ def flip(x, dim):
     return x.view(xsize)
 
 
-def validate(val_loader, model, criterion, evaluator):
+def validate(val_loader, model, criterion, evaluator, input_mean, input_std):
     with torch.no_grad():
         batch_time = AverageMeter()
         losses = AverageMeter()
+        psnrs = AverageMeter()
+        ssims = AverageMeter()
         evaluator.clear()
 
         # switch to evaluate mode
         model.eval()
+        
+
+        re_std = [1/x for x in input_std]
+        re_mean = [-1*mean*std  for mean, std in zip(input_mean, re_std)]
+
 
         end = time.time()
         for i, (input, target) in enumerate(val_loader):
@@ -107,28 +126,55 @@ def validate(val_loader, model, criterion, evaluator):
 
             # measure accuracy and record loss
 
+            # convert to normal img: BGR, 0-255 
             pred = output.data.cpu().numpy()
-            evaluator(pred, target.cpu().numpy())
+            gt = target.cpu().numpy()
+            evaluator(pred, gt)
             losses.update(loss.item(), input.size(0))
+
+            pred = pred[0]
+            pred = np.transpose(pred, (1, 2, 0))  #CHW -> HWC, BGR
+            pred = tf.normalize(pred, re_mean, re_std) # 0-255
+            pred = pred.clip(0, 255.0)
+            pred = np.round(pred).astype(np.uint8)
+
+            gt = gt[0]
+            gt = np.transpose(gt, (1, 2, 0))  #CHW -> HWC, BGR
+            gt = tf.normalize(gt, re_mean, re_std) # 0-255
+            gt = gt.clip(0, 255.0)
+            gt = np.round(gt).astype(np.uint8)
+            
+            # can save image
+            # cv2.imwrite('./img.png', pred)
+            
+            psnr = my_compare_psnr(pred, gt)
+            ssim = my_compare_ssim(pred, gt)
+
+            psnrs.update(psnr, 1)
+            ssims.update(ssim, 1)
 
             # measure elapsed time
             batch_time.update(time.time() - end)
             end = time.time()
 
 
-            print(('Test: [{0}/{1}]\t'
+            print( ('Test: [{0}/{1}]\t'
                     'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                     'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
-                    'PSNR {PSNR:.3f}'.format(
+                    'PSNR {PSNR:.3f}\t'
+                    'SSIM {SSIM:.3f}'.format(
                         i,
                         len(val_loader),
                         batch_time=batch_time,
                         loss=losses,
-                        PSNR=evaluator.PSNR())))
+                        PSNR=evaluator.PSNR(),
+                        SSIM=ssim))
+                )
 
         print('Testing Results: '
-              'PSNR {PSNR:.3f} ({bestPSNR:.4f})\tLoss {loss.avg:.5f}'.format(
+              'PSNR {PSNR:.3f} SSIM {SSIM:.3f} ({bestPSNR:.4f})\tLoss {loss.avg:.5f}'.format(
                   PSNR=evaluator.PSNR(),
+                  SSIM=ssims.avg,
                   bestPSNR=max(evaluator.PSNR(), best_PSNR),
                   loss=losses))
 
