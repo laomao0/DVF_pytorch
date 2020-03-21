@@ -22,3 +22,8 @@ test prediction
 # runing results:
   Testing Results: PSNR 31.457 (31.4573)  Loss 0.00856
   31.457312964287905
+
+
+add test_prediction_vimeo.py
+
+test next frame prediction on vimeo-90k sr dataset.
