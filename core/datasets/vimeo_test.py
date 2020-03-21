@@ -12,7 +12,7 @@ class VimeoTest(Dataset):
     def __init__(self, config):
         super(VimeoTest, self).__init__()
         self.dataset_path = '/DATA/wangshen_data/vimeo_septuplet/sequences'
-        self.img_list = '/DATA/wangshen_data/vimeo_septuplet/sep_trainlist.txt'
+        self.img_list = '/DATA/wangshen_data/vimeo_septuplet/sep_testlist.txt'
         self.paths_GT = open(os.path.join(self.img_list)).read().splitlines()
         self.input_list = [2, 3, 4]
         self.img_path = self.dataset_path
